@@ -36,22 +36,22 @@ services:
       start_period: 90s
       timeout: 20s
       retries: 3
-    labels:
-      - traefik.enable=true
-      # Milvus 19530 = gRPC over h2c. Traefik terminates TLS at the edge and forwards
-      # as h2c, so clients connect via grpcs:// on 443 → MILVUS_ADDRESS=https://<domain>.
-      - traefik.http.routers.milvus.rule=Host(`${MILVUS_DOMAIN:-milvus.localhost}`)
-      - traefik.http.routers.milvus.entryPoints=https
-      - traefik.http.routers.milvus.tls=true
-      - traefik.http.routers.milvus.tls.certresolver=letsencrypt
-      - traefik.http.routers.milvus.service=milvus
-      - traefik.http.services.milvus.loadbalancer.server.port=19530
-      - traefik.http.services.milvus.loadbalancer.server.scheme=h2c
-    # Optional: publish raw gRPC for Tailscale/LAN-direct access (bypasses Traefik).
-    # If enabled, lock 19530 to the tailnet or firewall it — auth alone isn't enough.
-    # ports:
-    #   - "19530:19530"
-    #   - "9091:9091"
+    # Tailscale-direct access (current phase — no public domain yet). Ports bind to
+    # BIND_IP so they are NOT exposed on the public interface; set BIND_IP to the host's
+    # tailnet IP in Coolify env (ovh2 = 100.91.190.107). gRPC SDK = 19530, health = 9091.
+    ports:
+      - "${BIND_IP:-127.0.0.1}:19530:19530"
+      - "${BIND_IP:-127.0.0.1}:9091:9091"
+    # DOMAIN PHASE — re-enable when DNS is ready and set MILVUS_DOMAIN (Traefik h2c → https):
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.milvus.rule=Host(`${MILVUS_DOMAIN}`)
+    #   - traefik.http.routers.milvus.entryPoints=https
+    #   - traefik.http.routers.milvus.tls=true
+    #   - traefik.http.routers.milvus.tls.certresolver=letsencrypt
+    #   - traefik.http.routers.milvus.service=milvus
+    #   - traefik.http.services.milvus.loadbalancer.server.port=19530
+    #   - traefik.http.services.milvus.loadbalancer.server.scheme=h2c
     restart: unless-stopped
 
   attu:
@@ -62,14 +62,17 @@ services:
       ATTU_DB_PATH: /data/attu.db
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/attu:/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.attu.rule=Host(`${ATTU_DOMAIN:-attu.localhost}`)
-      - traefik.http.routers.attu.entryPoints=https
-      - traefik.http.routers.attu.tls=true
-      - traefik.http.routers.attu.tls.certresolver=letsencrypt
-      - traefik.http.routers.attu.service=attu
-      - traefik.http.services.attu.loadbalancer.server.port=3000
+    ports:
+      - "${BIND_IP:-127.0.0.1}:3000:3000"
+    # DOMAIN PHASE — re-enable with ATTU_DOMAIN when DNS is ready:
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.attu.rule=Host(`${ATTU_DOMAIN}`)
+    #   - traefik.http.routers.attu.entryPoints=https
+    #   - traefik.http.routers.attu.tls=true
+    #   - traefik.http.routers.attu.tls.certresolver=letsencrypt
+    #   - traefik.http.routers.attu.service=attu
+    #   - traefik.http.services.attu.loadbalancer.server.port=3000
     depends_on:
       milvus:
         condition: service_healthy
