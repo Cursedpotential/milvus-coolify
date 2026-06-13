@@ -36,8 +36,11 @@ services:
       # named volumes at the wrong mountpoint; absolute paths bind correctly and are
       # easy to back up (owner preference). Host dir on ovh2: /data/milvus/volumes/*.
       - /data/milvus/volumes/milvus:/var/lib/milvus
-      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
-      - ./user.yaml:/milvus/configs/user.yaml:ro
+      # Config files as ABSOLUTE host bind mounts (real files on ovh2). The ./relative
+      # form makes Coolify/Docker auto-create an empty DIRECTORY at the source when it
+      # can't resolve the file → Milvus sees "user.yaml is a directory" and panics.
+      - /data/milvus/configs/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+      - /data/milvus/configs/user.yaml:/milvus/configs/user.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
