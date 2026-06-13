@@ -16,7 +16,7 @@
 
 services:
   milvus:
-    image: milvusdb/milvus:v3.0-beta
+    image: milvusdb/milvus:v3.0-beta-amd64   # explicit amd64 — multi-arch v3.0-beta segfaults at jemalloc on this host
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
