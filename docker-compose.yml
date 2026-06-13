@@ -1,0 +1,76 @@
+# Milvus 3.0 standalone (embedded) + Attu — Coolify-deployable vector store
+# Byline: Claude Code · Opus 4.8 · 2026-06-13
+#
+# Shared semantic-search backend for: (1) Agno platform code/knowledge indexing
+# (claude-context) and (2) the Case Bible corpus. Replaces managed Zilliz EU. See
+# ADR-0026 in the Agno-MCP-Platform repo.
+#
+# LIGHT embedded design (per milvus.io/docs/install_standalone-docker):
+#   - SINGLE Milvus container with EMBEDDED etcd + LOCAL storage — no separate
+#     etcd or MinIO containers, no Pulsar. WoodPecker is the WAL/streaming backend
+#     (Milvus 3.0 streaming arch), pinned to LOCAL storage in user.yaml.
+#   - Attu v3 = the admin GUI (vector search, schema, import/export, backup, RBAC,
+#     topology, AI chat). Attu v3 requires Milvus 3.x.
+#   - All persistent data on MAPPED (bind-mount) volumes for easy backup.
+#   - Traefik fronts Milvus gRPC (h2c) and the Attu UI (http). Lock down per README.
+
+services:
+  milvus:
+    image: milvusdb/milvus:v3.0-beta
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+      - ./user.yaml:/milvus/configs/user.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      # Milvus 19530 = gRPC over h2c. Traefik terminates TLS at the edge and forwards
+      # as h2c, so clients connect via grpcs:// on 443 → MILVUS_ADDRESS=https://<domain>.
+      - traefik.http.routers.milvus.rule=Host(`${MILVUS_DOMAIN:-milvus.localhost}`)
+      - traefik.http.routers.milvus.entryPoints=https
+      - traefik.http.routers.milvus.tls=true
+      - traefik.http.routers.milvus.tls.certresolver=letsencrypt
+      - traefik.http.routers.milvus.service=milvus
+      - traefik.http.services.milvus.loadbalancer.server.port=19530
+      - traefik.http.services.milvus.loadbalancer.server.scheme=h2c
+    # Optional: publish raw gRPC for Tailscale/LAN-direct access (bypasses Traefik).
+    # If enabled, lock 19530 to the tailnet or firewall it — auth alone isn't enough.
+    # ports:
+    #   - "19530:19530"
+    #   - "9091:9091"
+    restart: unless-stopped
+
+  attu:
+    image: zilliztech/attu:v3.0.0-beta.6
+    environment:
+      # Internal gRPC to Milvus on the compose network (no TLS internally).
+      MILVUS_ADDRESS: milvus:19530
+      ATTU_DB_PATH: /data/attu.db
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/attu:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.attu.rule=Host(`${ATTU_DOMAIN:-attu.localhost}`)
+      - traefik.http.routers.attu.entryPoints=https
+      - traefik.http.routers.attu.tls=true
+      - traefik.http.routers.attu.tls.certresolver=letsencrypt
+      - traefik.http.routers.attu.service=attu
+      - traefik.http.services.attu.loadbalancer.server.port=3000
+    depends_on:
+      milvus:
+        condition: service_healthy
+    restart: unless-stopped

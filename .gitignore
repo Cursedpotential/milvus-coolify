@@ -1,0 +1,7 @@
+# Secrets / local env — never commit
+.env
+*.env
+!.env.example
+
+# Mapped volume data (bind mounts live here when DOCKER_VOLUME_DIRECTORY is unset)
+volumes/
