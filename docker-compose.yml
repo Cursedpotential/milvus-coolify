@@ -26,8 +26,16 @@ services:
       ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
       COMMON_STORAGETYPE: local
       DEPLOY_MODE: STANDALONE
+      # FIX: the image ships LD_PRELOAD=":/milvus/lib/libjemalloc.so" — the leading colon
+      # is an empty path element that makes ld.so choke loading jemalloc -> SIGSEGV at
+      # startup. Override both with clean absolute paths (no orphaned colon).
+      LD_PRELOAD: /milvus/lib/libjemalloc.so
+      LD_LIBRARY_PATH: /milvus/lib
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+      # Absolute mapped (bind-mount) paths — Coolify mangles ${VAR}/relative volumes into
+      # named volumes at the wrong mountpoint; absolute paths bind correctly and are
+      # easy to back up (owner preference). Host dir on ovh2: /data/milvus/volumes/*.
+      - /data/milvus/volumes/milvus:/var/lib/milvus
       - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
       - ./user.yaml:/milvus/configs/user.yaml:ro
     healthcheck:
@@ -61,7 +69,7 @@ services:
       MILVUS_ADDRESS: milvus:19530
       ATTU_DB_PATH: /data/attu.db
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/attu:/data
+      - /data/milvus/volumes/attu:/data
     ports:
       - "${BIND_IP:-127.0.0.1}:3000:3000"
     # DOMAIN PHASE — re-enable with ATTU_DOMAIN when DNS is ready:
